@@ -1,0 +1,7 @@
+*#
+*~
+
+Gemfile.lock
+
+# temporary database files
+.tmp
