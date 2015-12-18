@@ -1,5 +1,6 @@
 require 'spec_helper'
 require 'fileutils'
+require 'pry'
 
 describe Hexagraph::Database do
   subject { described_class.new('.tmp/spec_db') }
@@ -9,7 +10,76 @@ describe Hexagraph::Database do
     FileUtils.rmdir Dir.glob('.tmp/spec_*')
   end
 
+  def random_nodes(n)
+    (0..(n - 1)).each_with_object([]) do |_, arry|
+      arry << (0...10).map { (65 + rand(26)).chr }.join
+    end
+  end
+
+  def random_edges(n)
+    random_nodes(n * 3).each_slice(3).to_a
+  end
+
+  shared_context 'with edges' do
+    before { edges.each { |s| subject.insert(*s) } }
+    after { subject.clear! }
+
+    let(:edges) { random_edges(1) }
+  end
+
+  xdescribe 'benchmark' do
+    require 'benchmark'
+    
+    it 'bm' do
+      FileUtils::mkdir_p '.tmp/bm' 
+      lmdb_env = LMDB.new('.tmp/bm', mapsize: 10_000_000_000)
+
+      db = lmdb_env.database
+
+      5.times do 
+        lmdb_env.transaction do
+          puts '.'
+          1_000_000.times do
+            s = (0...10).map { (65 + rand(26)).chr }.join
+            p = (0...10).map { (65 + rand(26)).chr }.join
+            o = (0...10).map { (65 + rand(26)).chr }.join
+            c = (0...10).map { (65 + rand(26)).chr }.join
+            
+            db["#{s}\00#{p}\00#{o}\00#{c}"] = ''
+          end
+        end
+      end
+
+      puts Benchmark.measure {
+        lmdb_env.transaction do
+          50_000.times do
+            s = (0...12).map { (65 + rand(26)).chr }.join
+            p = (0...12).map { (65 + rand(26)).chr }.join
+            o = (0...12).map { (65 + rand(26)).chr }.join
+            c = (0...12).map { (65 + rand(26)).chr }.join
+            
+            db["#{s}\00#{p}\00#{o}\00#{c}"] = ''
+          end
+        end
+      }
+
+      puts Benchmark.measure {
+        1000.times do
+          s = (0...10).map { (65 + rand(26)).chr }.join
+          subject.has_node?(s)
+        end
+      }
+    end
+  end
+
   describe 'initializing' do
+    it 'sets mapsize' do
+      size = 100_000
+      small = described_class.new('.tmp/spec_sm', mapsize: 100_000)
+
+      expect(small.env.info[:mapsize]).to eq size
+    end
+
     context 'when create is false' do
       it 'succeeds on existing path' do
         expect { subject }.not_to raise_error
@@ -23,8 +93,8 @@ describe Hexagraph::Database do
   end
 
   describe '#insert' do
-    before { subject.clear }
-    after { subject.clear }
+    before { subject.clear! }
+    after { subject.clear! }
       
     it 'inserts an edge' do
       expect { subject.insert('a', 'b', 'c') }
@@ -46,7 +116,7 @@ describe Hexagraph::Database do
 
   describe '#delete' do
     before { subject.insert('a', 'b', 'c') }
-    after { subject.clear }
+    after { subject.clear! }
 
     it 'deletes the edge' do
       expect { subject.delete('a', 'b', 'c') }
@@ -60,7 +130,7 @@ describe Hexagraph::Database do
 
   describe '#has_node?' do
     before { subject.insert('a', 'b', 'c') }
-    after { subject.clear }
+    after { subject.clear! }
 
     it 'has subject nodes' do
       expect(subject).to have_node 'a'
@@ -74,8 +144,9 @@ describe Hexagraph::Database do
       expect(subject).not_to have_node 'd'
     end
 
-    it 'does not have nodes that are not present' do
+    it 'does not have nodes when nodes with similar beginnings are present' do
       subject.insert('dd', 'b', 'c')
+
       expect(subject).not_to have_node 'd'
     end
 
@@ -85,17 +156,63 @@ describe Hexagraph::Database do
 
     it 'when edge is also node, has predicate node' do
       subject.insert('b', 'b', 'c')
+
       expect(subject).to have_node 'b'
     end
   end
 
+  describe '#has_edge?' do
+    it 'is false when edge does not exist' do
+      expect(subject).not_to have_edge('s', 'p', 'o')
+    end
+
+    describe 'with edges' do
+      include_context 'with edges'
+
+      it 'is true for existing statements' do
+        expect(subject).to have_edge(*edges.first)
+      end
+
+      it 'is false for truncated key' do
+        edge = edges.first
+
+        expect(subject).not_to have_edge(edge[0], edge[1], edge[2][0..-2])
+      end
+    end
+  end
+
+  describe 'adjacent?' do
+    it 'is false when edge does not exist' do
+      expect(subject).not_to be_adjacent('s', 'o')
+    end
+
+    context 'with edges' do
+      include_context 'with edges'
+      
+      let(:edge) { edges.first }
+
+      it 'is true when edge exists' do
+        expect(subject).to be_adjacent(edge.first, edge.last)
+      end
+
+      it 'is true when edge is reversed' do
+        subject.adjacent?(edge.last, edge.first)
+        expect(subject).to be_adjacent(edge.last, edge.first)
+      end
+
+      it 'is false for truncated edges' do
+        expect(subject).not_to be_adjacent(edge.first[0..-2], edge.last)
+        expect(subject).not_to be_adjacent(edge.first, edge.last[0..-2])
+      end
+    end
+  end
 
   describe '#count' do
     it 'when empty gives 0' do
       expect(subject.count).to eq 0
     end
 
-    context 'with statements' do
+    context 'with edges' do
       it 'gives a current count' do
       end
     end

@@ -4,24 +4,26 @@ module Hexagraph
   ##
   # An LMDB backed graph database
   class Database
+    attr_reader :env
+
     ##
     # Initializes a database at the given path
     # 
     # @param path [String] a path to initialize 
-    def initialize(path, create: true)
+    def initialize(path, mapsize: 10_000_000, create: true)
       FileUtils::mkdir_p path if create
-      @lmdb_env = LMDB.new(path, mapsize: 10_000_000)
-      @spo = @lmdb_env.database('spo', create: create)
-      @ops = @lmdb_env.database('ops', create: create)
-      @sop = @lmdb_env.database('sop', create: create)
-      @pso = @lmdb_env.database('pso', create: create)
+      @env = LMDB.new(path, mapsize: mapsize)
+
+      @spo = @env.database('spo', create: create)
+      @ops = @env.database('ops', create: create)
+      @sop = @env.database('sop', create: create)
+      @pso = @env.database('pso', create: create)
     end
 
     ##
-    #
     # @return [void]
-    def clear
-      @lmdb_env.transaction do
+    def clear!
+      @env.transaction do
         @spo.clear
         @ops.clear
         @sop.clear
@@ -39,14 +41,14 @@ module Hexagraph
     ##
     # @return [Boolean] true if the edge was inserted.
     def insert(s, p, o)
-      @lmdb_env.transaction { _insert(s, p, o) }
+      @env.transaction { _insert(s, p, o) }
     end
 
     ##
     # @return [Boolean] true if the edge was deleted; false if it was not 
     #   present
     def delete(s, p, o)
-      @lmdb_env.transaction { _delete(s, p, o) }
+      @env.transaction { _delete(s, p, o) }
     end
 
     ##
@@ -66,6 +68,49 @@ module Hexagraph
         rescue LMDB::Error::NOTFOUND; end
       end
 
+      false
+    end
+
+    ##
+    # @param s [String]
+    # @param p [String]
+    # @param o [String]
+    # 
+    # @return [Boolean] true if a (directed) edge exists between `s` and `o`,
+    #   connected by `p`
+    def has_edge?(s, p, o)
+      @spo.cursor do |cursor|
+        key = spo_key(s, p, o)
+        begin
+          return true if 
+            cursor.set_range(key).first == key
+        rescue LMDB::Error::NOTFOUND; end
+      end
+      
+      false
+    end
+
+    ##
+    # @param n1 [String]
+    # @param n2 [String]
+    # 
+    # @return [Boolean] true if the two nodes are connected by any edge
+    def adjacent?(n1, n2)
+      @sop.cursor do |cursor|
+        begin
+          return true if 
+            cursor.set_range("#{n1}\00#{n2}\00")
+            .first.start_with?("#{n1}\00#{n2}\00")
+        rescue LMDB::Error::NOTFOUND; end
+      end
+
+      @sop.cursor do |cursor|
+        begin
+          return true if 
+            cursor.set_range("#{n2}\00#{n1}\00")
+            .first.start_with?("#{n2}\00#{n1}\00")
+        rescue LMDB::Error::NOTFOUND; end
+      end
       false
     end
 
