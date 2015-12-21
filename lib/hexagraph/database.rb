@@ -129,7 +129,7 @@ module Hexagraph
         rescue LMDB::Error::NOTFOUND; end
       end
 
-      @gops.cursor do |cursor|
+      @gosp.cursor do |cursor|
         begin
           return true if
             cursor.set_range("#{graph}\00#{node}\00")
@@ -165,7 +165,7 @@ module Hexagraph
     # 
     # @return [Boolean] true if the two nodes are connected by any edge
     def adjacent?(n1, n2, graph: DEFAULT_GRAPH)
-      @gsop.cursor do |cursor|
+      @gosp.cursor do |cursor|
         begin
           return true if 
             cursor.set_range("#{graph}\00#{n1}\00#{n2}\00")
@@ -175,7 +175,7 @@ module Hexagraph
 
       # @todo this sometimes gives a false negative unless using a new cursor, 
       #   why? `cursor.first` does not prevent the failure.
-      @gsop.cursor do |cursor|
+      @gosp.cursor do |cursor|
         begin
           return true if 
             cursor.set_range("#{graph}\00#{n2}\00#{n1}\00")
@@ -190,27 +190,36 @@ module Hexagraph
 
     def assign_indexes!(create)
       @spog = @env.database('spog', create: create)
+      @ospg = @env.database('ospg', create: create)
       @psog = @env.database('psog', create: create)
+      @posg = @env.database('posg', create: create)
       @gspo = @env.database('gspo', create: create)
-      @gops = @env.database('gops', create: create)
-      @gsop = @env.database('gsop', create: create)
+      @gosp = @env.database('gosp', create: create)
+      @gpso = @env.database('gpso', create: create)
+      @gpos = @env.database('gpos', create: create)
     end
 
     def clear_indexes!
       @spog.clear
+      @ospg.clear
       @psog.clear
+      @posg.clear
       @gspo.clear
-      @gops.clear
-      @gsop.clear
+      @gosp.clear
+      @gpso.clear
+      @gpos.clear
     end
 
     def _insert(s, p, o, g)
       unless @spog[spog_key(s, p, o, g)]
         @spog[spog_key(s, p, o, g)] = ''
+        @ospg[ospg_key(s, p, o, g)] = ''
         @psog[psog_key(s, p, o, g)] = ''
+        @posg[posg_key(s, p, o, g)] = ''
         @gspo[gspo_key(s, p, o, g)] = ''
-        @gops[gops_key(s, p, o, g)] = ''
-        @gsop[gsop_key(s, p, o, g)] = ''
+        @gosp[gosp_key(s, p, o, g)] = ''
+        @gpso[gpso_key(s, p, o, g)] = ''
+        @gpos[gpos_key(s, p, o, g)] = ''
       end
     end
 
@@ -220,30 +229,45 @@ module Hexagraph
       rescue LMDB::Error::NOTFOUND
         return false
       end
-      @psog.delete(psog_key(s, p, o, g))
-      @gspo.delete(gspo_key(s, p, o, g))
-      @gops.delete(gops_key(s, p, o, g))
-      @gsop.delete(gsop_key(s, p, o, g))
+      @ospg.delete ospg_key(s, p, o, g)
+      @psog.delete psog_key(s, p, o, g)
+      @posg.delete posg_key(s, p, o, g)
+      @gspo.delete gspo_key(s, p, o, g)
+      @gosp.delete gosp_key(s, p, o, g)
+      @gpso.delete gpso_key(s, p, o, g)
+      @gpos.delete gpos_key(s, p, o, g)
     end
     
     def spog_key(s, p, o, g)
       "#{s}\00#{p}\00#{o}\00#{g}"
     end
 
+    def ospg_key(s, p, o, g)
+      "#{o}\00#{s}\00#{p}\00#{g}"
+    end
+
     def psog_key(s, p, o, g)
       "#{p}\00#{s}\00#{o}\00#{g}"
+    end
+
+    def posg_key(s, p, o, g)
+      "#{p}\00#{o}\00#{s}\00#{g}"
     end
 
     def gspo_key(s, p, o, g)
       "#{g}\00#{s}\00#{p}\00#{o}"
     end
 
-    def gops_key(s, p, o, g)
-      "#{g}\00#{o}\00#{p}\00#{s}"
+    def gosp_key(s, p, o, g)
+      "#{g}\00#{o}\00#{s}\00#{p}"
     end
 
-    def gsop_key(s, p, o, g)
-      "#{g}\00#{s}\00#{o}\00#{p}"
+    def gpso_key(s, p, o, g)
+      "#{g}\00#{p}\00#{s}\00#{o}"
+    end
+
+    def gpos_key(s, p, o, g)
+      "#{g}\00#{p}\00#{o}\00#{s}"
     end
   end
 end
