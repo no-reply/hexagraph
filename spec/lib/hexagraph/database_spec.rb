@@ -10,6 +10,8 @@ describe Hexagraph::Database do
     FileUtils.rmdir Dir.glob('.tmp/spec_*')
   end
 
+  after { subject.clear! }
+
   def random_nodes(n)
     (0..(n - 1)).each_with_object([]) do |_, arry|
       arry << (0...10).map { (65 + rand(26)).chr }.join
@@ -22,9 +24,8 @@ describe Hexagraph::Database do
 
   shared_context 'with edges' do
     before { edges.each { |s| subject.insert(*s) } }
-    after { subject.clear! }
 
-    let(:edges) { random_edges(1) }
+    let(:edges) { random_edges(5) }
   end
 
   xdescribe 'benchmark' do
@@ -92,19 +93,33 @@ describe Hexagraph::Database do
     end
   end
 
-  describe '#insert' do
-    before { subject.clear! }
-    after { subject.clear! }
+  describe '#edges' do
+    it 'is empty' do
+      expect(subject.edges.count).to eq 0
+    end
+    
+    context 'with edges' do
+      include_context 'with edges'
+
+      it 'is an Enumerable' do
+        expect(subject.edges).to be_a Enumerable
+      end
       
+      it 'enumerates edges' do
+        expect(subject.edges).to contain_exactly(*edges)
+      end
+    end
+  end
+
+  describe '#insert' do
     it 'inserts an edge' do
       expect { subject.insert('a', 'b', 'c') }
         .to change { subject.count }.from(0).to(1)
     end
 
     it 'has the edge after insert' do
-    end
-
-    it 'adds a triple' do
+      expect { subject.insert('a', 'b', 'c') }
+        .to change { subject.has_edge?('a', 'b', 'c') }.to(true)
     end
 
     it 'does not re-insert' do
@@ -116,7 +131,6 @@ describe Hexagraph::Database do
 
   describe '#delete' do
     before { subject.insert('a', 'b', 'c') }
-    after { subject.clear! }
 
     it 'deletes the edge' do
       expect { subject.delete('a', 'b', 'c') }
@@ -130,7 +144,6 @@ describe Hexagraph::Database do
 
   describe '#has_node?' do
     before { subject.insert('a', 'b', 'c') }
-    after { subject.clear! }
 
     it 'has subject nodes' do
       expect(subject).to have_node 'a'
@@ -207,14 +220,42 @@ describe Hexagraph::Database do
     end
   end
 
+  describe '#inserts' do
+    let(:edges) { random_edges(5) }
+
+    it 'inserts correct edges' do
+      expect { subject.inserts(edges) }
+        .to change { subject.edges }.to contain_exactly(*edges)
+    end
+  end
+
+  describe '#deletes' do
+    include_context 'with edges'
+    
+    it 'deletes edges' do
+      expect { subject.deletes(edges) }
+        .to change { subject.count }.from(edges.count).to(0)
+    end
+
+    it 'deletes edges' do
+      new_edges = random_edges(10)
+      subject.inserts(new_edges)
+
+      expect { subject.deletes(edges) }
+        .to change { subject.edges }.to contain_exactly(*new_edges)
+    end
+  end
+
   describe '#count' do
+    let(:edges) { random_edges(5) }
+
     it 'when empty gives 0' do
       expect(subject.count).to eq 0
     end
 
-    context 'with edges' do
-      it 'gives a current count' do
-      end
+    it 'gives a current count' do
+      expect { subject.inserts(edges) }
+        .to change { subject.count }.from(0).to(edges.count)
     end
   end
 end

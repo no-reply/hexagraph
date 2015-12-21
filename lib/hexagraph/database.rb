@@ -5,7 +5,7 @@ module Hexagraph
   # An LMDB backed graph database
   class Database
     attr_reader :env
-
+    
     ##
     # Initializes a database at the given path
     # 
@@ -14,20 +14,28 @@ module Hexagraph
       FileUtils::mkdir_p path if create
       @env = LMDB.new(path, mapsize: mapsize)
 
-      @spo = @env.database('spo', create: create)
-      @ops = @env.database('ops', create: create)
-      @sop = @env.database('sop', create: create)
-      @pso = @env.database('pso', create: create)
+      assign_indexes!(create)
+    end
+
+    ##
+    # @return [Enumerator] an enumerator over the edges in the graph
+    def edges
+      Enumerator.new do |yielder|
+        @spo.cursor do |c|
+          loop do
+            edge = c.next
+            break if edge.nil?
+            yielder << edge.first.split("\00") 
+          end
+        end
+      end
     end
 
     ##
     # @return [void]
     def clear!
       @env.transaction do
-        @spo.clear
-        @ops.clear
-        @sop.clear
-        @pso.clear
+        clear_indexes!
       end
     end
 
@@ -39,16 +47,46 @@ module Hexagraph
     end
 
     ##
+    # @param n1 [String]
+    # @param e [String]
+    # @param n2 [String]
+    #
     # @return [Boolean] true if the edge was inserted.
-    def insert(s, p, o)
-      @env.transaction { _insert(s, p, o) }
+    def insert(n1, e, n2)
+      @env.transaction { _insert(n1, e, n2) }
     end
 
     ##
+    # @param edges [Enumerable]
+    #
+    # @return [Boolean] true if the edges were inserted.
+    def inserts(edges)
+      @env.transaction do
+        edges.each { |n1, e, n2| _insert(n1, e, n2) }
+      end
+
+      true
+    end
+
+    ##
+    # @param n1 [String]
+    # @param e [String]
+    # @param n2 [String]
+    #
     # @return [Boolean] true if the edge was deleted; false if it was not 
     #   present
-    def delete(s, p, o)
-      @env.transaction { _delete(s, p, o) }
+    def delete(n1, e, n2)
+      @env.transaction { _delete(n1, e, n2) }
+    end
+
+    ##
+    # @param edges [Enumerable]
+    #
+    # @return [Boolean] true if the edges were inserted.
+    def deletes(edges)
+      @env.transaction do
+        edges.each { |n1, e, n2| _delete(n1, e, n2) }
+      end
     end
 
     ##
@@ -72,15 +110,15 @@ module Hexagraph
     end
 
     ##
-    # @param s [String]
-    # @param p [String]
-    # @param o [String]
+    # @param n1 [String]
+    # @param e [String]
+    # @param n2 [String]
     # 
     # @return [Boolean] true if a (directed) edge exists between `s` and `o`,
     #   connected by `p`
-    def has_edge?(s, p, o)
+    def has_edge?(n1, e, n2)
       @spo.cursor do |cursor|
-        key = spo_key(s, p, o)
+        key = spo_key(n1, e, n2)
         begin
           return true if 
             cursor.set_range(key).first == key
@@ -104,6 +142,8 @@ module Hexagraph
         rescue LMDB::Error::NOTFOUND; end
       end
 
+      # @todo this sometimes gives a false negative unless using a new cursor, 
+      #   why? `cursor.first` does not prevent the failure.
       @sop.cursor do |cursor|
         begin
           return true if 
@@ -114,7 +154,22 @@ module Hexagraph
       false
     end
 
+    
     private
+
+    def assign_indexes!(create)
+      @spo = @env.database('spo', create: create)
+      @ops = @env.database('ops', create: create)
+      @sop = @env.database('sop', create: create)
+      @pso = @env.database('pso', create: create)
+    end
+
+    def clear_indexes!
+      @spo.clear
+      @ops.clear
+      @sop.clear
+      @pso.clear
+    end
 
     def _insert(s, p, o)
       unless @spo[spo_key(s, p, o)]
