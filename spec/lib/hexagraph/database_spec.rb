@@ -223,6 +223,27 @@ describe Hexagraph::Database do
     end
   end
 
+  describe 'has_graph?' do
+    it 'does not have empty graph' do
+      expect(subject).not_to have_graph 'g'
+    end
+
+    context 'with edge in graph' do
+      before { subject.insert('a', 'b', 'c', graph: 'g') }
+
+      it 'has graph while present' do
+        expect(subject).to have_graph 'g'
+      end
+
+      it 'does not have graph when graph is emptied' do
+        subject.insert('a', 'b', 'c', graph: 'g')
+
+        expect { subject.delete('a', 'b', 'c', graph: 'g') }
+          .to change { subject.has_graph?('g') }.to(false)
+      end
+    end
+  end
+
   describe 'adjacent?' do
     it 'is false when edge does not exist' do
       expect(subject).not_to be_adjacent('s', 'o')

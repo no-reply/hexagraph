@@ -15,7 +15,7 @@ module Hexagraph
     def initialize(path, mapsize: 10_000_000, create: true)
       FileUtils::mkdir_p path if create
       @env = LMDB.new(path, mapsize: mapsize)
-
+      
       assign_indexes!(create)
     end
 
@@ -105,6 +105,20 @@ module Hexagraph
     end
 
     ##
+    # @return [Boolean] true if graph exists
+    def has_graph?(graph)
+      @gspo.cursor do |cursor|
+        begin
+          return true if 
+            cursor.set_range("#{graph}\00")
+            .first.start_with?("#{graph}\00")
+        rescue LMDB::Error::NOTFOUND; end
+      end
+
+      false
+    end
+
+    ##
     # @return [Boolean] true if there is a node
     def has_node?(node, graph: DEFAULT_GRAPH)
       @gspo.cursor do |cursor|
@@ -168,6 +182,7 @@ module Hexagraph
             .first.start_with?("#{graph}\00#{n2}\00#{n1}\00")
         rescue LMDB::Error::NOTFOUND; end
       end
+
       false
     end
     
