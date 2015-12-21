@@ -127,6 +127,20 @@ describe Hexagraph::Database do
       expect { subject.insert('a', 'b', 'c') }
         .not_to change { subject.count }
     end
+
+    context 'to graph' do
+      let(:edge) { random_edges(1).first }
+
+      it 'inserts to correct graph' do
+        expect { subject.insert(*edge, graph: 'g') }
+          .to change { subject.edges(graph: 'g') }.to contain_exactly(edge)
+      end
+
+      it 'does not insert to default graph' do
+        expect { subject.insert(*edge, graph: 'g') }
+          .not_to change { subject.edges.to_a }
+      end
+    end
   end
 
   describe '#delete' do
@@ -172,6 +186,13 @@ describe Hexagraph::Database do
 
       expect(subject).to have_node 'b'
     end
+    
+    context 'in graph' do
+      it 'is true for graph with node' do
+        expect { subject.insert('a', 'b', 'c', graph: 'g') }
+          .to change { subject.has_node?('a', graph: 'g') }.from(false).to(true)
+      end
+    end
   end
 
   describe '#has_edge?' do
@@ -191,6 +212,14 @@ describe Hexagraph::Database do
 
         expect(subject).not_to have_edge(edge[0], edge[1], edge[2][0..-2])
       end
+
+      context 'in graph' do
+        it 'is true for graph with node' do
+          expect { subject.insert(*edges.first, graph: 'g') }
+            .to change { subject.has_edge?(*edges.first, graph: 'g') }
+                 .from(false).to(true)
+        end
+      end
     end
   end
 
@@ -209,13 +238,23 @@ describe Hexagraph::Database do
       end
 
       it 'is true when edge is reversed' do
-        subject.adjacent?(edge.last, edge.first)
         expect(subject).to be_adjacent(edge.last, edge.first)
       end
 
       it 'is false for truncated edges' do
         expect(subject).not_to be_adjacent(edge.first[0..-2], edge.last)
         expect(subject).not_to be_adjacent(edge.first, edge.last[0..-2])
+      end
+      
+      context 'in graph' do
+        it 'is not adjacent' do
+          expect(subject).not_to be_adjacent(edge.last, edge.first, graph: 'g')
+        end
+
+        it 'is adjacent' do
+          subject.insert(*edge, graph: 'g')
+          expect(subject).to be_adjacent(edge.last, edge.first, graph: 'g')
+        end
       end
     end
   end
@@ -226,6 +265,28 @@ describe Hexagraph::Database do
     it 'inserts correct edges' do
       expect { subject.inserts(edges) }
         .to change { subject.edges }.to contain_exactly(*edges)
+    end
+
+    context 'in graph' do
+      it 'inserts correct edges to graph' do
+        expect { subject.inserts(edges, graph: 'g') }
+          .to change { subject.edges(graph: 'g') }.to contain_exactly(*edges)
+      end
+
+      it 'does not insert to default graph' do
+        expect { subject.inserts(edges, graph: 'g') }
+          .not_to change { subject.edges.to_a }
+      end
+
+      it 'inserts to graph from statement array' do
+        edges.first << 'g'
+
+        expect { subject.inserts(edges) }
+          .to change { subject.edges(graph: 'g') }
+               .to contain_exactly(edges.first[0..2])
+        
+        expect(subject.edges).to contain_exactly(*edges[1..-1])
+      end
     end
   end
 
@@ -242,7 +303,7 @@ describe Hexagraph::Database do
       subject.inserts(new_edges)
 
       expect { subject.deletes(edges) }
-        .to change { subject.edges }.to contain_exactly(*new_edges)
+        .to change { subject.edges.to_a }.to contain_exactly(*new_edges)
     end
   end
 
