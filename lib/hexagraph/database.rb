@@ -15,26 +15,30 @@ module Hexagraph
     def initialize(path, mapsize: 10_000_000, create: true)
       FileUtils::mkdir_p path if create
       @env = LMDB.new(path, mapsize: mapsize)
-      
+      @dict = Dictionary.new(@env)
+
       assign_indexes!(create)
     end
 
     ##
     # @return [Enumerator] an enumerator over the edges in the graph
     def edges(graph: DEFAULT_GRAPH)
+      graph = @dict.get(graph)
+
       Enumerator.new do |yielder|
         @gspo.cursor do |c|
           begin
-            c.set_range("#{graph}\00")
+            c.set_range("#{graph}#{separator}")
           rescue LMDB::Error::NOTFOUND; break; end
           
           edge = c.get
 
           loop do
-            edge = edge.first.split("\00")
+            edge = split_key(edge.first)
             break if edge.first != graph
-            yielder << edge[1..3]
 
+            yielder << edge[1..3].map { |t| @dict.lookup(t) }
+            
             edge = c.next
             break if edge.nil? 
           end
@@ -45,7 +49,10 @@ module Hexagraph
     ##
     # @return [void]
     def clear!
-      @env.transaction { clear_indexes! }
+      @env.transaction do
+        clear_indexes!
+        @dict.clear!
+      end
     end
 
     ##
@@ -107,11 +114,13 @@ module Hexagraph
     ##
     # @return [Boolean] true if graph exists
     def has_graph?(graph)
+      graph = @dict.get(graph)
+
       @gspo.cursor do |cursor|
         begin
           return true if 
-            cursor.set_range("#{graph}\00")
-            .first.start_with?("#{graph}\00")
+            cursor.set_range("#{graph}#{separator}")
+            .first.start_with?("#{graph}#{separator}")
         rescue LMDB::Error::NOTFOUND; end
       end
 
@@ -121,19 +130,22 @@ module Hexagraph
     ##
     # @return [Boolean] true if there is a node
     def has_node?(node, graph: DEFAULT_GRAPH)
+      node  = @dict.get(node)
+      graph = @dict.get(graph)
+
       @gspo.cursor do |cursor|
         begin
           return true if 
-            cursor.set_range("#{graph}\00#{node}\00")
-            .first.start_with?("#{graph}\00#{node}\00")
+            cursor.set_range([graph, node].join(separator))
+            .first.start_with?([graph, node].join(separator))
         rescue LMDB::Error::NOTFOUND; end
       end
 
       @gosp.cursor do |cursor|
         begin
           return true if
-            cursor.set_range("#{graph}\00#{node}\00")
-            .first.start_with?("#{graph}\00#{node}\00")
+            cursor.set_range([graph, node].join(separator))
+            .first.start_with?([graph, node].join(separator))
         rescue LMDB::Error::NOTFOUND; end
       end
 
@@ -149,7 +161,10 @@ module Hexagraph
     #   connected by `p`
     def has_edge?(n1, e, n2, graph: DEFAULT_GRAPH)
       @gspo.cursor do |cursor|
-        key = gspo_key(n1, e, n2, graph)
+        key = gspo_key(@dict.get(n1), 
+                       @dict.get(e), 
+                       @dict.get(n2), 
+                       @dict.get(graph))
         begin
           return true if 
             cursor.set_range(key).first == key
@@ -165,11 +180,15 @@ module Hexagraph
     # 
     # @return [Boolean] true if the two nodes are connected by any edge
     def adjacent?(n1, n2, graph: DEFAULT_GRAPH)
+      n1    = @dict.get(n1)
+      n2    = @dict.get(n2)
+      graph = @dict.get(graph)
+
       @gosp.cursor do |cursor|
         begin
           return true if 
-            cursor.set_range("#{graph}\00#{n1}\00#{n2}\00")
-            .first.start_with?("#{graph}\00#{n1}\00#{n2}\00")
+            cursor.set_range([graph, n1, n2].join(separator))
+            .first.start_with?([graph, n1, n2].join(separator))
         rescue LMDB::Error::NOTFOUND; end
       end
 
@@ -178,8 +197,8 @@ module Hexagraph
       @gosp.cursor do |cursor|
         begin
           return true if 
-            cursor.set_range("#{graph}\00#{n2}\00#{n1}\00")
-            .first.start_with?("#{graph}\00#{n2}\00#{n1}\00")
+            cursor.set_range([graph, n2, n1].join(separator))
+            .first.start_with?([graph, n2, n1].join(separator))
         rescue LMDB::Error::NOTFOUND; end
       end
 
@@ -211,6 +230,11 @@ module Hexagraph
     end
 
     def _insert(s, p, o, g)
+      s = @dict.get(s)
+      p = @dict.get(p)
+      o = @dict.get(o)
+      g = @dict.get(g)
+
       unless @spog[spog_key(s, p, o, g)]
         @spog[spog_key(s, p, o, g)] = ''
         @ospg[ospg_key(s, p, o, g)] = ''
@@ -224,6 +248,11 @@ module Hexagraph
     end
 
     def _delete(s, p, o, g)
+      s = @dict.get(s)
+      p = @dict.get(p)
+      o = @dict.get(o)
+      g = @dict.get(g)
+
       begin
         @spog.delete(spog_key(s, p, o, g))
       rescue LMDB::Error::NOTFOUND
@@ -237,37 +266,59 @@ module Hexagraph
       @gpso.delete gpso_key(s, p, o, g)
       @gpos.delete gpos_key(s, p, o, g)
     end
-    
+
+    def separator
+      Dictionary::SEPARATOR
+    end
+
+    def split_key(key)
+      result = [a=''.force_encoding('ASCII-8BIT')]
+
+      key.chars.each do |c|
+        if c == separator.force_encoding('ASCII-8BIT')
+          result << a=''.force_encoding('ASCII-8BIT')
+        else
+          a << c
+        end
+      end
+
+      result.pop if a.empty?
+
+      result
+    end
+
+    ##
+    # @todo: refactor keys
     def spog_key(s, p, o, g)
-      "#{s}\00#{p}\00#{o}\00#{g}"
+      "#{s}#{separator}#{p}#{separator}#{o}#{separator}#{g}"
     end
 
     def ospg_key(s, p, o, g)
-      "#{o}\00#{s}\00#{p}\00#{g}"
+      "#{o}#{separator}#{s}#{separator}#{p}#{separator}#{g}"
     end
 
     def psog_key(s, p, o, g)
-      "#{p}\00#{s}\00#{o}\00#{g}"
+      "#{p}#{separator}#{s}#{separator}#{o}#{separator}#{g}"
     end
 
     def posg_key(s, p, o, g)
-      "#{p}\00#{o}\00#{s}\00#{g}"
+      "#{p}#{separator}#{o}#{separator}#{s}#{separator}#{g}"
     end
 
     def gspo_key(s, p, o, g)
-      "#{g}\00#{s}\00#{p}\00#{o}"
+      "#{g}#{separator}#{s}#{separator}#{p}#{separator}#{o}"
     end
 
     def gosp_key(s, p, o, g)
-      "#{g}\00#{o}\00#{s}\00#{p}"
+      "#{g}#{separator}#{o}#{separator}#{s}#{separator}#{p}"
     end
 
     def gpso_key(s, p, o, g)
-      "#{g}\00#{p}\00#{s}\00#{o}"
+      "#{g}#{separator}#{p}#{separator}#{s}#{separator}#{o}"
     end
 
     def gpos_key(s, p, o, g)
-      "#{g}\00#{p}\00#{o}\00#{s}"
+      "#{g}#{separator}#{p}#{separator}#{o}#{separator}#{s}"
     end
   end
 end
