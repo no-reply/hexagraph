@@ -9,6 +9,7 @@ group :debug do
   gem "redcarpet", platforms: :ruby
   gem "byebug", platforms: :mri
   gem 'guard-rspec'
+  gem 'benchmark-ips'
 end
 
 group :test do

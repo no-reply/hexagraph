@@ -28,51 +28,6 @@ describe Hexagraph::Database do
     let(:edges) { random_edges(5) }
   end
 
-  xdescribe 'benchmark' do
-    require 'benchmark'
-    
-    it 'bm' do
-      FileUtils::mkdir_p '.tmp/bm' 
-      lmdb_env = LMDB.new('.tmp/bm', mapsize: 10_000_000_000)
-
-      db = lmdb_env.database
-
-      5.times do 
-        lmdb_env.transaction do
-          puts '.'
-          1_000_000.times do
-            s = (0...10).map { (65 + rand(26)).chr }.join
-            p = (0...10).map { (65 + rand(26)).chr }.join
-            o = (0...10).map { (65 + rand(26)).chr }.join
-            c = (0...10).map { (65 + rand(26)).chr }.join
-            
-            db["#{s}\00#{p}\00#{o}\00#{c}"] = ''
-          end
-        end
-      end
-
-      puts Benchmark.measure {
-        lmdb_env.transaction do
-          50_000.times do
-            s = (0...12).map { (65 + rand(26)).chr }.join
-            p = (0...12).map { (65 + rand(26)).chr }.join
-            o = (0...12).map { (65 + rand(26)).chr }.join
-            c = (0...12).map { (65 + rand(26)).chr }.join
-            
-            db["#{s}\00#{p}\00#{o}\00#{c}"] = ''
-          end
-        end
-      }
-
-      puts Benchmark.measure {
-        1000.times do
-          s = (0...10).map { (65 + rand(26)).chr }.join
-          subject.has_node?(s)
-        end
-      }
-    end
-  end
-
   describe 'initializing' do
     it 'sets mapsize' do
       size = 100_000
