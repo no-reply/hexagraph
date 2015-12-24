@@ -14,6 +14,7 @@ end
 
 group :test do
   gem "rake"
+  gem "rdf-spec"
   gem "equivalent-xml"
   gem 'fasterer'
 end
