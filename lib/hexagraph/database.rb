@@ -5,13 +5,13 @@ module Hexagraph
   # An LMDB backed graph database
   class Database
     attr_reader :env
-    
+
     DEFAULT_GRAPH = '_g'
-    
+
     ##
     # Initializes a database at the given path
-    # 
-    # @param path [String] a path to initialize 
+    #
+    # @param path [String] a path to initialize
     def initialize(path, mapsize: 10_000_000, create: true)
       FileUtils::mkdir_p path if create
       @env = LMDB.new(path, mapsize: mapsize)
@@ -30,7 +30,7 @@ module Hexagraph
           begin
             c.set_range("#{graph}#{separator}")
           rescue LMDB::Error::NOTFOUND; break; end
-          
+
           edge = c.get
 
           loop do
@@ -38,9 +38,9 @@ module Hexagraph
             break if edge.first != graph
 
             yielder << edge[1..3].map { |t| @dict.lookup(t) }
-            
+
             edge = c.next
-            break if edge.nil? 
+            break if edge.nil?
           end
         end
       end
@@ -56,7 +56,7 @@ module Hexagraph
     end
 
     ##
-    # @return [Integer] a current count of the number of edges in the 
+    # @return [Integer] a current count of the number of edges in the
     #   graph
     def count
       @spog.count
@@ -92,7 +92,7 @@ module Hexagraph
     # @param e [String]
     # @param n2 [String]
     #
-    # @return [Boolean] true if the edge was deleted; false if it was not 
+    # @return [Boolean] true if the edge was deleted; false if it was not
     #   present
     def delete(n1, e, n2, graph: DEFAULT_GRAPH)
       @env.transaction { _delete(n1, e, n2, graph) }
@@ -104,10 +104,26 @@ module Hexagraph
     # @return [Boolean] true if the edges were inserted.
     def deletes(edges, graph: DEFAULT_GRAPH)
       @env.transaction do
-        edges.each do |n1, e, n2, g| 
+        edges.each do |n1, e, n2, g|
           g ||= graph
           _delete(n1, e, n2, g)
         end
+      end
+    end
+
+    ##
+    # @param deletes [Enumerable]
+    # @param inserts [Enumerable]
+    #
+    # @return [void]
+    #
+    # @todo: the implementation uses LMDB's nested transactions; this may or
+    #   may not be the best approach. It's used here for simplicity of
+    #   implementation; consider benchmarking.
+    def delete_insert(deletes, inserts)
+      @env.transaction do
+        self.deletes(deletes)
+        self.inserts(inserts)
       end
     end
 
@@ -118,7 +134,7 @@ module Hexagraph
 
       @gspo.cursor do |cursor|
         begin
-          return true if 
+          return true if
             cursor.set_range("#{graph}#{separator}")
             .first.start_with?("#{graph}#{separator}")
         rescue LMDB::Error::NOTFOUND; end
@@ -135,7 +151,7 @@ module Hexagraph
 
       @gspo.cursor do |cursor|
         begin
-          return true if 
+          return true if
             cursor.set_range([graph, node].join(separator))
             .first.start_with?([graph, node].join(separator))
         rescue LMDB::Error::NOTFOUND; end
@@ -156,28 +172,28 @@ module Hexagraph
     # @param n1 [String]
     # @param e [String]
     # @param n2 [String]
-    # 
+    #
     # @return [Boolean] true if a (directed) edge exists between `s` and `o`,
     #   connected by `p`
     def has_edge?(n1, e, n2, graph: DEFAULT_GRAPH)
       @gspo.cursor do |cursor|
-        key = gspo_key(@dict.get(n1), 
-                       @dict.get(e), 
-                       @dict.get(n2), 
+        key = gspo_key(@dict.get(n1),
+                       @dict.get(e),
+                       @dict.get(n2),
                        @dict.get(graph))
         begin
-          return true if 
+          return true if
             cursor.set_range(key).first == key
         rescue LMDB::Error::NOTFOUND; end
       end
-      
+
       false
     end
 
     ##
     # @param n1 [String]
     # @param n2 [String]
-    # 
+    #
     # @return [Boolean] true if the two nodes are connected by any edge
     def adjacent?(n1, n2, graph: DEFAULT_GRAPH)
       n1    = @dict.get(n1)
@@ -186,17 +202,17 @@ module Hexagraph
 
       @gosp.cursor do |cursor|
         begin
-          return true if 
+          return true if
             cursor.set_range([graph, n1, n2].join(separator))
             .first.start_with?([graph, n1, n2].join(separator))
         rescue LMDB::Error::NOTFOUND; end
       end
 
-      # @todo this sometimes gives a false negative unless using a new cursor, 
+      # @todo this sometimes gives a false negative unless using a new cursor,
       #   why? `cursor.first` does not prevent the failure.
       @gosp.cursor do |cursor|
         begin
-          return true if 
+          return true if
             cursor.set_range([graph, n2, n1].join(separator))
             .first.start_with?([graph, n2, n1].join(separator))
         rescue LMDB::Error::NOTFOUND; end
@@ -204,7 +220,7 @@ module Hexagraph
 
       false
     end
-    
+
     private
 
     def assign_indexes!(create)

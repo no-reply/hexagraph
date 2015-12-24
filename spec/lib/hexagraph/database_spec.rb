@@ -52,14 +52,14 @@ describe Hexagraph::Database do
     it 'is empty' do
       expect(subject.edges.count).to eq 0
     end
-    
+
     context 'with edges' do
       include_context 'with edges'
 
       it 'is an Enumerable' do
         expect(subject.edges).to be_a Enumerable
       end
-      
+
       it 'enumerates edges' do
         expect(subject.edges).to contain_exactly(*edges)
       end
@@ -105,9 +105,58 @@ describe Hexagraph::Database do
       expect { subject.delete('a', 'b', 'c') }
         .to change { subject.count }.from(1).to(0)
     end
-    
+
     it 'does not delete non-existent edge' do
       expect { subject.delete('a', 'b', 'd') }.not_to change { subject.count }
+    end
+  end
+
+  describe '#delete_insert' do
+    before { subject.insert('a', 'b', 'c') }
+
+    it 'deletes the edge' do
+      deletes = [['a', 'b', 'c']]
+      inserts = [['d', 'b', 'c']]
+
+      expect { subject.delete_insert(deletes, inserts) }
+        .to change { subject.has_edge?('a', 'b', 'c') }.from(true).to(false)
+    end
+
+    it 'inserts the edge' do
+      deletes = [['a', 'b', 'c']]
+      inserts = [['d', 'b', 'c']]
+
+      expect { subject.delete_insert(deletes, inserts) }
+        .to change { subject.has_edge?('d', 'b', 'c') }.from(false).to(true)
+    end
+
+    it 'skips deletes when not present' do
+      deletes = [['x', 'b', 'c']]
+      inserts = [['d', 'b', 'c']]
+
+      expect { subject.delete_insert(deletes, inserts) }
+        .to change { subject.has_edge?('d', 'b', 'c') }.from(false).to(true)
+    end
+
+    it 'handles multiple inserts/deletes' do
+      deletes = [['a', 'b', 'c'], ['x', 'b', 'c']]
+      inserts = [['d', 'b', 'c'], ['x', 'y', 'z']]
+
+      expect { subject.delete_insert(deletes, inserts) }
+        .to change { subject.has_edge?('a', 'b', 'c') }.from(true).to(false)
+
+      inserts.each do |edge|
+        expect(subject).to have_edge(*edge)
+      end
+    end
+
+    it 'does not delete when insert is invalid' do
+      deletes = [['a', 'b', 'c']]
+      inserts = nil
+
+      expect { subject.delete_insert(deletes, inserts) }
+        .to raise_error(NoMethodError)
+      expect(subject).to have_edge(*deletes.first)
     end
   end
 
@@ -141,7 +190,7 @@ describe Hexagraph::Database do
 
       expect(subject).to have_node 'b'
     end
-    
+
     context 'in graph' do
       it 'is true for graph with node' do
         expect { subject.insert('a', 'b', 'c', graph: 'g') }
@@ -206,7 +255,7 @@ describe Hexagraph::Database do
 
     context 'with edges' do
       include_context 'with edges'
-      
+
       let(:edge) { edges.first }
 
       it 'is true when edge exists' do
@@ -221,7 +270,7 @@ describe Hexagraph::Database do
         expect(subject).not_to be_adjacent(edge.first[0..-2], edge.last)
         expect(subject).not_to be_adjacent(edge.first, edge.last[0..-2])
       end
-      
+
       context 'in graph' do
         it 'is not adjacent' do
           expect(subject).not_to be_adjacent(edge.last, edge.first, graph: 'g')
@@ -260,7 +309,7 @@ describe Hexagraph::Database do
         expect { subject.inserts(edges) }
           .to change { subject.edges(graph: 'g') }
                .to contain_exactly(edges.first[0..2])
-        
+
         expect(subject.edges).to contain_exactly(*edges[1..-1])
       end
     end
@@ -268,7 +317,7 @@ describe Hexagraph::Database do
 
   describe '#deletes' do
     include_context 'with edges'
-    
+
     it 'deletes edges' do
       expect { subject.deletes(edges) }
         .to change { subject.count }.from(edges.count).to(0)
