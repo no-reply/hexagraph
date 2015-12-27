@@ -1,6 +1,5 @@
 require 'spec_helper'
 require 'fileutils'
-require 'pry'
 
 describe Hexagraph::Database do
   subject { described_class.new('.tmp/spec_db') }
@@ -342,6 +341,95 @@ describe Hexagraph::Database do
     it 'gives a current count' do
       expect { subject.inserts(edges) }
         .to change { subject.count }.from(0).to(edges.count)
+    end
+  end
+
+  describe '#has_graph' do
+    include_context 'with edges'
+
+    it 'when graph exists returns true' do
+      expect(subject).to have_graph described_class::DEFAULT_GRAPH
+    end
+
+    it 'when graph does not exist returns false' do
+      expect(subject).not_to have_graph 'not_a_graph'
+    end
+
+    it 'changes when inserted' do
+      expect { subject.insert('s', 'p', 'o', graph: 'new_graph') }
+        .to change { subject.has_graph?('new_graph') }.from(false).to(true)
+    end
+  end
+
+  describe '#has_subject' do
+    include_context 'with edges'
+
+    let(:node) { edges.first.first }
+
+    it 'when subject exists returns true' do
+      expect(subject).to have_subject node
+    end
+
+    it 'when subject does not exist returns false' do
+      expect(subject).not_to have_subject 'not_a_subject'
+    end
+
+    it 'changes when inserted' do
+      expect { subject.insert('new_s', 'p', 'o') }
+        .to change { subject.has_subject?('new_s') }.from(false).to(true)
+    end
+
+    it 'changes when inserted to graph' do
+      expect { subject.insert('new_s', 'p', 'o', graph: 'moomin') }
+        .to change { subject.has_subject?('new_s') }.from(false).to(true)
+    end
+  end
+
+  describe '#has_predicate' do
+    include_context 'with edges'
+
+    let(:node) { edges.first[1] }
+
+    it 'when predicate exists returns true' do
+      expect(subject).to have_predicate node
+    end
+
+    it 'when predicate does not exist returns false' do
+      expect(subject).not_to have_predicate 'not_a_predicate'
+    end
+
+    it 'changes when inserted' do
+      expect { subject.insert('s', 'new_p', 'o') }
+        .to change { subject.has_predicate?('new_p') }.from(false).to(true)
+    end
+
+    it 'changes when inserted to graph' do
+      expect { subject.insert('s', 'new_p', 'o', graph: 'moomin') }
+        .to change { subject.has_predicate?('new_p') }.from(false).to(true)
+    end
+  end
+
+  describe '#has_object' do
+    include_context 'with edges'
+
+    let(:node) { edges.first[2] }
+
+    it 'when object exists returns true' do
+      expect(subject).to have_object node
+    end
+
+    it 'when object does not exist returns false' do
+      expect(subject).not_to have_object 'not_an_object'
+    end
+
+    it 'changes when inserted' do
+      expect { subject.insert('s', 'p', 'new_o') }
+        .to change { subject.has_object?('new_o') }.from(false).to(true)
+    end
+
+    it 'changes when inserted to graph' do
+      expect { subject.insert('s', 'p', 'new_o', graph: 'moomin') }
+        .to change { subject.has_object?('new_o') }.from(false).to(true)
     end
   end
 end

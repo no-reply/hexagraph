@@ -12,7 +12,7 @@ module Hexagraph
     # Initializes a database at the given path
     #
     # @param path [String] a path to initialize
-    def initialize(path, mapsize: 10_000_000, create: true)
+    def initialize(path, mapsize: 100_000_000, create: true)
       FileUtils::mkdir_p path if create
       @env = LMDB.new(path, mapsize: mapsize)
       @dict = Dictionary.new(@env)
@@ -54,7 +54,7 @@ module Hexagraph
         @dict.clear!
       end
     end
-
+ 
     ##
     # @return [Integer] a current count of the number of edges in the
     #   graph
@@ -66,17 +66,22 @@ module Hexagraph
     # @param n1 [String]
     # @param e [String]
     # @param n2 [String]
+    # @param graph [String]
     #
     # @return [Boolean] true if the edge was inserted.
     def insert(n1, e, n2, graph: DEFAULT_GRAPH)
+      graph ||= DEFAULT_GRAPH
       @env.transaction { _insert(n1, e, n2, graph) }
     end
 
     ##
     # @param edges [Enumerable]
+    # @param graph [String]
     #
     # @return [Boolean] true if the edges were inserted.
     def inserts(edges, graph: DEFAULT_GRAPH)
+      graph ||= DEFAULT_GRAPH
+
       @env.transaction do
         edges.each do |n1, e, n2, g|
           g ||= graph
@@ -128,19 +133,31 @@ module Hexagraph
     end
 
     ##
+    # @param graph [String]
     # @return [Boolean] true if graph exists
     def has_graph?(graph)
-      graph = @dict.get(graph)
+      scan_index(@gspo, @dict.get(graph))
+    end
 
-      @gspo.cursor do |cursor|
-        begin
-          return true if
-            cursor.set_range("#{graph}#{separator}")
-            .first.start_with?("#{graph}#{separator}")
-        rescue LMDB::Error::NOTFOUND; end
-      end
+    ##
+    # @param node [String]
+    # @return [Boolean] true if node has outgoing edges 
+    def has_subject?(node)
+      scan_index(@spog, @dict.get(node))
+    end
 
-      false
+    ##
+    # @param predicate [String]
+    # @return [Boolean] true if predicate exists as an edge label
+    def has_predicate?(predicate)
+      scan_index(@psog, @dict.get(predicate))
+    end
+
+    ##
+    # @param node [String]
+    # @return [Boolean] true if node has incoming edges 
+    def has_object?(node)
+      scan_index(@ospg, @dict.get(node))
     end
 
     ##
@@ -301,6 +318,22 @@ module Hexagraph
       result.pop if a.empty?
 
       result
+    end
+
+    ##
+    # @param index [LMDB::Database]
+    # @param term [String]
+    # @return [Boolean]
+    def scan_index(index, term)
+      index.cursor do |cursor|
+        begin
+          return true if
+            cursor.set_range("#{term}#{separator}")
+            .first.start_with?("#{term}#{separator}")
+        rescue LMDB::Error::NOTFOUND; end
+      end
+
+      false
     end
 
     ##
