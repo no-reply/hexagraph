@@ -1,15 +1,9 @@
 source "https://rubygems.org"
 
-gem 'lmdb'
-gem 'rdf'
+gemspec
 
-group :debug do
-  gem 'psych', platforms: [:mri, :rbx]
-  gem "wirble"
-  gem "redcarpet", platforms: :ruby
-  gem "byebug", platforms: :mri
-  gem 'guard-rspec'
-  gem 'benchmark-ips'
+group :develop do
+  gem 'pry'
 end
 
 group :test do
@@ -17,6 +11,7 @@ group :test do
   gem "rdf-spec"
   gem "equivalent-xml"
   gem 'fasterer'
+  gem 'benchmark-ips'
 end
 
 platforms :rbx do
