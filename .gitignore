@@ -2,6 +2,7 @@
 *~
 
 Gemfile.lock
+.ruby-version
 
 # temporary database files
 .tmp
