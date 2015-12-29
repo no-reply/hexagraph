@@ -408,7 +408,7 @@ describe Hexagraph::Database do
         .to change { subject.has_predicate?('new_p') }.from(false).to(true)
     end
   end
-
+  
   describe '#has_object' do
     include_context 'with edges'
 

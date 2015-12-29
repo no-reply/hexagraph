@@ -1,5 +1,4 @@
 require 'bm_helper'
-require 'pry'
 
 describe 'insert performance', :benchmark => true do
   let(:db) { Hexagraph::Database.new('.tmp/bm', mapsize: 1_000_000_000) }
@@ -7,16 +6,26 @@ describe 'insert performance', :benchmark => true do
   def triples(count: 25_000, length: 15)
     Enumerator.new do |yielder|
       loop do
-        s = (0...length).map { (65 + rand(26)).chr }.join
-        p = (0...length).map { (65 + rand(26)).chr }.join
-        o = (0...length).map { (65 + rand(26)).chr }.join
+        # make some reasonably dense data; we could probably
+        # use a more realistic dataset for these benchmarks
+        n1 = (0...length).map { (65 + rand(26)).chr }.join
+        n2 = (0...length).map { (65 + rand(26)).chr }.join
+        n3 = (0...length).map { (65 + rand(26)).chr }.join
+        n4 = (0...length).map { (65 + rand(26)).chr }.join
+        p1 = (0...length).map { (65 + rand(26)).chr }.join
+        p2 = (0...length).map { (65 + rand(26)).chr }.join
+        p3 = (0...length).map { (65 + rand(26)).chr }.join
 
-        yielder.yield [s, p, o]
-        yielder.yield [s, o, p]
-        # yielder.yield [p, s, o]
-        # yielder.yield [p, o, s]
-        # yielder.yield [o, p, s]
-        yielder.yield [o, s, p]
+        yielder.yield [n1, p1, n2]
+        yielder.yield [n1, p1, n3]
+        yielder.yield [n3, p2, n3]
+        yielder.yield [n1, p2, n3]
+        yielder.yield [n2, p1, n4]
+        yielder.yield [n2, p1, n3]
+        yielder.yield [n2, p2, n1]
+        yielder.yield [n3, p3, n1]
+        yielder.yield [p3, p2, p1]
+        yielder.yield [n4, p1, n3]
       end
     end.take(count)
   end
